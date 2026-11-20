@@ -1,0 +1,674 @@
+const defaultBackend = typeof window !== 'undefined' && window.location.hostname === 'localhost'
+  ? ''
+  : 'https://demo-restaurant-api.p7404467.workers.dev';
+
+const BASE_URL = (import.meta.env.VITE_API_URL || defaultBackend).replace(/\/+$/, '');
+const API_BASE = `${BASE_URL}/api`;
+
+export const api = {
+  // --- Public / Customer Endpoints ---
+  async getDefaultTable() {
+    const res = await fetch(`${API_BASE}/order/tables/default`);
+    if (!res.ok) throw new Error('Failed to load default table');
+    return res.json();
+  },
+
+  async getMenu(restaurantId) {
+    const res = await fetch(`${API_BASE}/menu/${restaurantId}`);
+    if (!res.ok) throw new Error('Failed to load menu');
+    return res.json();
+  },
+
+  async initSession(tableId, sessionToken) {
+    const res = await fetch(`${API_BASE}/order/session/init`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tableId, sessionToken: sessionToken || null }),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to initialize session');
+    return result;
+  },
+
+  async getCustomerSession(sessionToken) {
+    const res = await fetch(`${API_BASE}/order/session/${sessionToken}`);
+    if (!res.ok) throw new Error('Failed to fetch customer session');
+    return res.json();
+  },
+
+  async getTableSession(tableId, sessionToken) {
+    const url = sessionToken
+      ? `${API_BASE}/order/table/${tableId}/session?sessionToken=${encodeURIComponent(sessionToken)}`
+      : `${API_BASE}/order/table/${tableId}/session`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Failed to check table session');
+    return res.json();
+  },
+
+  async createOrder(data) {
+    const res = await fetch(`${API_BASE}/order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to place order');
+    return result;
+  },
+
+  async addItemsToOrder(orderId, items) {
+    // Backend expects items as [{ menuItemId, quantity }]
+    const formatted = (Array.isArray(items) ? items : []).map((it) => ({
+      menuItemId: it.menu_item_id || it.menuItemId || it.id,
+      quantity: it.quantity,
+    }));
+    const res = await fetch(`${API_BASE}/order/${orderId}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: formatted }),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to add items to order');
+    return result;
+  },
+
+  async removeOrderItem(orderId, itemId) {
+    const res = await fetch(`${API_BASE}/order/${orderId}/items/${itemId}`, {
+      method: 'DELETE',
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to remove dish');
+    return result;
+  },
+
+  async updateOrderNotes(orderId, notes) {
+    const res = await fetch(`${API_BASE}/order/${orderId}/notes`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes }),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to update cooking notes');
+    return result;
+  },
+
+  async callWaiter(tableId, requestType, note = '', sessionToken = null, sessionLabel = null, customerName = null) {
+    const res = await fetch(`${API_BASE}/order/table/${tableId}/call-waiter`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(sessionToken ? { 'x-session-token': sessionToken } : {})
+      },
+      body: JSON.stringify({
+        requestType,
+        request_type: requestType,
+        note,
+        sessionToken,
+        sessionLabel,
+        customerName
+      }),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to summon waiter');
+    return result;
+  },
+
+  async applyCoupon(orderId, code) {
+    const res = await fetch(`${API_BASE}/order/${orderId}/apply-coupon`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to apply coupon');
+    return result;
+  },
+
+  async getBillSplit(orderId, ways = 2) {
+    const res = await fetch(`${API_BASE}/order/${orderId}/split?ways=${ways}`);
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to calculate bill split');
+    return result;
+  },
+
+  async submitFeedback(orderId, rating, comments = '', extra = {}) {
+    let url = orderId ? `${API_BASE}/order/${orderId}/feedback` : `${API_BASE}/order/feedback/submit`;
+    const payload = {
+      orderId: orderId || null,
+      rating,
+      comments,
+      tags: extra.tags || [],
+      tableId: extra.tableId || null,
+      restaurantId: extra.restaurantId || null
+    };
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to submit feedback');
+    return result;
+  },
+
+  // --- Kitchen Display System (KDS) ---
+  async kitchenLogin(password, restaurantId) {
+    const res = await fetch(`${API_BASE}/kitchen/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password, restaurantId }),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Incorrect kitchen password');
+    return result;
+  },
+
+  async verifyKitchenSession(token, restaurantId) {
+    if (!token) return { valid: false };
+    const url = restaurantId
+      ? `${API_BASE}/kitchen/verify?restaurantId=${encodeURIComponent(restaurantId)}`
+      : `${API_BASE}/kitchen/verify`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.status === 401 || res.status === 403) return { valid: false };
+    if (!res.ok) throw new Error('Kitchen session verification unavailable');
+    return res.json();
+  },
+
+  async resetKitchenPassword({ restaurantId, currentPassword, adminPassword, newPassword }) {
+    const res = await fetch(`${API_BASE}/kitchen/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ restaurantId, currentPassword, adminPassword, newPassword }),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to reset kitchen password');
+    return result;
+  },
+
+  async getKitchenTickets(restaurantId) {
+    const rId = restaurantId || 'db4ed920-3d20-420a-9f54-99d3c0b48a08';
+    try {
+      const res = await fetch(`${API_BASE}/kitchen/tickets/${rId}`);
+      if (res.ok) return await res.json();
+    } catch (_) {}
+    const res = await fetch(`${API_BASE}/kitchen/tickets?restaurantId=${rId}`);
+    if (!res.ok) throw new Error('Failed to fetch kitchen tickets');
+    return res.json();
+  },
+
+  async advanceKitchenTicket(orderId) {
+    const res = await fetch(`${API_BASE}/kitchen/tickets/${orderId}/advance`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to advance ticket');
+    return result;
+  },
+
+  // --- Admin / Management Endpoints ---
+  async adminLogin(username, password) {
+    const res = await fetch(`${API_BASE}/admin/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Invalid credentials');
+    return result;
+  },
+
+  async getAdminOverview(restaurantId, token) {
+    const url = restaurantId
+      ? `${API_BASE}/admin/analytics/overview?restaurantId=${restaurantId}`
+      : `${API_BASE}/admin/analytics/overview`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error('Failed to fetch analytics');
+    return res.json();
+  },
+
+  async getAdminOrders(restaurantId, token, status = '') {
+    const params = new URLSearchParams();
+    if (restaurantId) params.append('restaurantId', restaurantId);
+    if (status) params.append('status', status);
+    const query = params.toString();
+    const res = await fetch(`${API_BASE}/admin/orders${query ? `?${query}` : ''}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error('Failed to fetch admin orders');
+    return res.json();
+  },
+
+  async getServiceRequests(restaurantId, token) {
+    const url = restaurantId
+      ? `${API_BASE}/admin/service-requests?restaurantId=${restaurantId}`
+      : `${API_BASE}/admin/service-requests`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error('Failed to fetch service requests');
+    return res.json();
+  },
+
+  async resolveServiceRequest(requestId, token) {
+    const res = await fetch(`${API_BASE}/admin/service-requests/${requestId}/resolve`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error('Failed to resolve request');
+    return res.json();
+  },
+
+  async toggleDishAvailability(menuItemId, token) {
+    const res = await fetch(`${API_BASE}/admin/menu/${menuItemId}/toggle-availability`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to toggle availability');
+    return result;
+  },
+
+  async createMenuItem(itemData, token) {
+    const res = await fetch(`${API_BASE}/admin/menu`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(itemData),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to add food item');
+    return result;
+  },
+
+  async updateMenuItem(menuItemId, itemData, token) {
+    const res = await fetch(`${API_BASE}/admin/menu/${menuItemId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(itemData),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to update food item');
+    return result;
+  },
+
+  async uploadImage(file, token) {
+    const formData = new FormData();
+    formData.append('image', file);
+    const res = await fetch(`${API_BASE}/admin/upload-image`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: formData
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to upload photo');
+    return result;
+  },
+
+  async deleteMenuItem(menuItemId, token) {
+    const res = await fetch(`${API_BASE}/admin/menu/${menuItemId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to delete food item');
+    return result;
+  },
+
+  async dismissAndSettleOrder(orderId, paymentMethod = 'UPI', token) {
+    const res = await fetch(`${API_BASE}/order/${orderId}/dismiss`, {
+      method: 'PUT',
+      headers: { 
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}` 
+      },
+      body: JSON.stringify({ payment_method: paymentMethod }),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to settle order');
+    return result;
+  },
+
+  async getFeedbackList(restaurantId, token) {
+    const url = restaurantId
+      ? `${API_BASE}/admin/feedback?restaurantId=${restaurantId}`
+      : `${API_BASE}/admin/feedback`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error('Failed to fetch feedback');
+    return res.json();
+  },
+
+  async getCoupons(restaurantId, token) {
+    const url = restaurantId
+      ? `${API_BASE}/admin/coupons?restaurantId=${restaurantId}`
+      : `${API_BASE}/admin/coupons`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error('Failed to fetch coupons');
+    return res.json();
+  },
+
+  async createCoupon(data, token) {
+    const res = await fetch(`${API_BASE}/admin/coupons`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}` 
+      },
+      body: JSON.stringify(data),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to create coupon');
+    return result;
+  },
+
+  async getBulkQRCodes(restaurantId) {
+    const res = await fetch(`${API_BASE}/qr/restaurant/${restaurantId}/bulk`);
+    if (!res.ok) throw new Error('Failed to generate bulk QR codes');
+    return res.json();
+  },
+
+  async getActiveGroupedTables(restaurantId, token) {
+    const url = restaurantId
+      ? `${API_BASE}/admin/tables/active-grouped?restaurantId=${restaurantId}`
+      : `${API_BASE}/admin/tables/active-grouped`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error('Failed to fetch active grouped tables');
+    return res.json();
+  },
+
+  async settleEntireTable(tableId, paymentMethod = 'CASH') {
+    const res = await fetch(`${API_BASE}/order/table/${tableId}/settle-all`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paymentMethod }),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to settle table');
+    return result;
+  },
+
+  getSalesCSVUrl(restaurantId) {
+    const token = localStorage.getItem('qr_admin_token') || '';
+    const params = new URLSearchParams();
+    if (restaurantId) params.append('restaurantId', restaurantId);
+    if (token) params.append('token', token);
+    const query = params.toString();
+    return `${API_BASE}/admin/reports/sales/csv${query ? `?${query}` : ''}`;
+  },
+
+  // ===== INTELLIGENCE & ANALYTICS SUITE =====
+  async getTodayKPI(restaurantId, token) {
+    const url = restaurantId
+      ? `${API_BASE}/admin/analytics/today-kpi?restaurantId=${restaurantId}`
+      : `${API_BASE}/admin/analytics/today-kpi`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Failed to fetch today KPI');
+    return res.json();
+  },
+
+  async getPeakHours(restaurantId, token) {
+    const url = restaurantId
+      ? `${API_BASE}/admin/analytics/peak-hours?restaurantId=${restaurantId}`
+      : `${API_BASE}/admin/analytics/peak-hours`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Failed to fetch peak hours');
+    return res.json();
+  },
+
+  async getDishPerformance(restaurantId, token) {
+    const url = restaurantId
+      ? `${API_BASE}/admin/analytics/dish-performance?restaurantId=${restaurantId}`
+      : `${API_BASE}/admin/analytics/dish-performance`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Failed to fetch dish performance');
+    return res.json();
+  },
+
+  async getReviewsAI(restaurantId, token) {
+    const url = restaurantId
+      ? `${API_BASE}/admin/analytics/reviews-ai?restaurantId=${restaurantId}`
+      : `${API_BASE}/admin/analytics/reviews-ai`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Failed to fetch AI reviews');
+    return res.json();
+  },
+
+  async getOperationsTargets(restaurantId, token) {
+    const url = restaurantId
+      ? `${API_BASE}/admin/analytics/operations-targets?restaurantId=${restaurantId}`
+      : `${API_BASE}/admin/analytics/operations-targets`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Failed to fetch operations and targets');
+    return res.json();
+  },
+
+  async updateTargets(restaurantId, token, targetData) {
+    const res = await fetch(`${API_BASE}/admin/analytics/targets`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ restaurantId, ...targetData })
+    });
+    if (!res.ok) throw new Error('Failed to update targets');
+    return res.json();
+  },
+
+  // Dynamic UPI Payment methods
+  async getUpiInfo(tableId, restaurantId) {
+    const params = new URLSearchParams();
+    if (tableId) params.append('tableId', tableId);
+    if (restaurantId) params.append('restaurantId', restaurantId);
+    const res = await fetch(`${API_BASE}/order/upi-info?${params.toString()}`);
+    if (!res.ok) throw new Error('Failed to fetch UPI payment information');
+    return res.json();
+  },
+
+  async submitUpiPayment(payload) {
+    const res = await fetch(`${API_BASE}/order/upi/notify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to submit UPI payment notification');
+    return data;
+  },
+
+  async getAdminUpi(restaurantId, token) {
+    const params = new URLSearchParams();
+    if (restaurantId) params.append('restaurantId', restaurantId);
+    const res = await fetch(`${API_BASE}/admin/upi?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Failed to fetch UPI settings');
+    return res.json();
+  },
+
+  async toggleAdminUpi(restaurantId, token, enabled) {
+    const res = await fetch(`${API_BASE}/admin/upi/toggle`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ restaurantId, enabled })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to toggle UPI status');
+    return data;
+  },
+
+  async addAdminUpiAccount(restaurantId, token, { label, upiId, upiName, setActive = true }) {
+    const res = await fetch(`${API_BASE}/admin/upi/accounts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ restaurantId, label, upiId, upiName, setActive })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to add UPI ID');
+    return data;
+  },
+
+  async deleteAdminUpiAccount(restaurantId, token, accountId) {
+    const params = new URLSearchParams();
+    if (restaurantId) params.append('restaurantId', restaurantId);
+    const res = await fetch(`${API_BASE}/admin/upi/accounts/${encodeURIComponent(accountId)}?${params.toString()}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to remove UPI ID');
+    return data;
+  },
+
+  async updateAdminUpi(restaurantId, token, upiId, upiName, passkey) {
+    const res = await fetch(`${API_BASE}/admin/upi`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ restaurantId, upiId, upiName, passkey })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to update UPI settings');
+    return data;
+  },
+
+  async verifyAdminSession(token, restaurantId) {
+    if (!token) return { valid: false };
+    const params = new URLSearchParams();
+    if (restaurantId) params.append('restaurantId', restaurantId);
+    const res = await fetch(`${API_BASE}/admin/verify?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.status === 401 || res.status === 403) return { valid: false };
+    if (!res.ok) throw new Error('Admin session verification unavailable');
+    return res.json();
+  },
+
+  async resetAdminPassword({ restaurantId, currentPassword, recoveryPin, newPassword }) {
+    const res = await fetch(`${API_BASE}/admin/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ restaurantId, currentPassword, recoveryPin, newPassword }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to reset admin password');
+    return data;
+  },
+
+  async getReceiptByCode(code) {
+    const clean = encodeURIComponent(String(code || '').trim());
+    const res = await fetch(`${API_BASE}/order/receipt/${clean}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Receipt not found');
+    return data;
+  },
+
+  async resetAdminUpiPasskey(restaurantId, token, adminPassword, newPasskey) {
+    const res = await fetch(`${API_BASE}/admin/upi/reset-passkey`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ restaurantId, adminPassword, newPasskey })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to reset passkey');
+    return data;
+  },
+
+  // --- Staff Waiter POS & Billing Station Endpoints ---
+  async getPosTableStatus(restaurantId) {
+    const q = restaurantId ? `?restaurantId=${encodeURIComponent(restaurantId)}` : '';
+    const res = await fetch(`${API_BASE}/pos/tables/status${q}`);
+    if (!res.ok) throw new Error('Failed to fetch table statuses');
+    return res.json();
+  },
+
+  async createPosOrder(data) {
+    const res = await fetch(`${API_BASE}/pos/order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to place POS order');
+    return result;
+  },
+
+  async getActivePosTableOrder(tableNumber, restaurantId) {
+    const q = restaurantId ? `?restaurantId=${encodeURIComponent(restaurantId)}` : '';
+    const res = await fetch(`${API_BASE}/pos/table/${tableNumber}/active${q}`);
+    if (!res.ok) throw new Error('Failed to fetch active table order');
+    return res.json();
+  },
+
+  async settlePosOrder(orderId, data = {}) {
+    const res = await fetch(`${API_BASE}/pos/order/${orderId}/settle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to settle bill');
+    return result;
+  },
+
+  async getArchivedBills(params = {}) {
+    const query = new URLSearchParams();
+    if (params.restaurantId) query.set('restaurantId', params.restaurantId);
+    if (params.date) query.set('date', params.date);
+    if (params.table !== undefined && params.table !== '') query.set('table', params.table);
+    if (params.search) query.set('search', params.search);
+    if (params.limit) query.set('limit', params.limit);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+
+    const res = await fetch(`${API_BASE}/pos/bills${qs}`);
+    if (!res.ok) throw new Error('Failed to load archived bills');
+    return res.json();
+  },
+
+  async getArchivedBillById(id) {
+    const res = await fetch(`${API_BASE}/pos/bills/${encodeURIComponent(id)}`);
+    if (!res.ok) throw new Error('Failed to load bill details');
+    return res.json();
+  }
+};

@@ -1,0 +1,181 @@
+-- schema for restaurant QR ordering system
+-- run this on your Supabase/PostgreSQL instance (you can use Supabase dashboard > SQL editor)
+
+CREATE TABLE IF NOT EXISTS restaurants (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    owner_name TEXT,
+    address TEXT,
+    phone TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS tables (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    number INTEGER NOT NULL UNIQUE,
+    restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE,
+    qr_code_url TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS customers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    consent_given BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS menu_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    description TEXT,
+    price NUMERIC(10,2) NOT NULL,
+    photo_url TEXT,
+    category TEXT DEFAULT 'Main Course',
+    available BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+DO $$ BEGIN
+    CREATE TYPE order_status AS ENUM ('PENDING','PREPARING','READY','SERVED','PAID','CANCELLED');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+CREATE TABLE IF NOT EXISTS orders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE,
+    table_id UUID REFERENCES tables(id) ON DELETE SET NULL,
+    customer_id UUID REFERENCES customers(id) ON DELETE SET NULL,
+    status order_status NOT NULL DEFAULT 'PENDING',
+    notes TEXT,
+    total NUMERIC(10,2) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS order_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
+    menu_item_id UUID REFERENCES menu_items(id) ON DELETE RESTRICT,
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    price_at_order NUMERIC(10,2) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Indexes for fast look‑ups
+CREATE INDEX IF NOT EXISTS idx_orders_restaurant ON orders(restaurant_id);
+CREATE INDEX IF NOT EXISTS idx_orders_table ON orders(table_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
+
+-- Backward-compatible column additions for existing installations
+ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'Main Course';
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS tax_percentage NUMERIC(5,2) DEFAULT 5.0;
+ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT '₹';
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS subtotal NUMERIC(10,2) NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS tax_percentage NUMERIC(5,2) DEFAULT 5.0;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(10,2) NOT NULL DEFAULT 0;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'CASH';
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'PENDING';
+
+-- Customer Feedback & Ratings
+CREATE TABLE IF NOT EXISTS order_feedback (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
+    restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE,
+    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    comments TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_restaurant ON order_feedback(restaurant_id);
+
+-- Waiter Assistance & Table Service Calls
+DO $$ BEGIN
+    CREATE TYPE service_request_status AS ENUM ('PENDING', 'ATTENDED', 'RESOLVED');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+CREATE TABLE IF NOT EXISTS service_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE,
+    table_id UUID REFERENCES tables(id) ON DELETE CASCADE,
+    request_type TEXT NOT NULL,
+    status service_request_status NOT NULL DEFAULT 'PENDING',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    resolved_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_requests_restaurant ON service_requests(restaurant_id);
+CREATE INDEX IF NOT EXISTS idx_service_requests_table ON service_requests(table_id);
+
+-- Promotional Coupons & Discounts
+CREATE TABLE IF NOT EXISTS coupons (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE,
+    code TEXT NOT NULL,
+    discount_type TEXT NOT NULL CHECK (discount_type IN ('PERCENTAGE', 'FLAT')),
+    discount_value NUMERIC(10,2) NOT NULL,
+    min_order_amount NUMERIC(10,2) DEFAULT 0,
+    max_discount_amount NUMERIC(10,2),
+    valid_until TIMESTAMP WITH TIME ZONE,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    CONSTRAINT unique_restaurant_coupon UNIQUE (restaurant_id, code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_coupons_restaurant ON coupons(restaurant_id);
+
+-- Order discount tracking
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS coupon_code TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(10,2) NOT NULL DEFAULT 0;
+
+-- Multi-Customer Independent Table Sessions
+CREATE TABLE IF NOT EXISTS customer_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_token TEXT UNIQUE NOT NULL,
+    table_id UUID REFERENCES tables(id) ON DELETE CASCADE,
+    restaurant_id UUID REFERENCES restaurants(id) ON DELETE CASCADE,
+    customer_id UUID REFERENCES customers(id) ON DELETE SET NULL,
+    session_label TEXT NOT NULL DEFAULT 'Customer 1',
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    last_active TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_customer_sessions_table ON customer_sessions(table_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_customer_sessions_token ON customer_sessions(session_token);
+
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS session_id UUID REFERENCES customer_sessions(id) ON DELETE SET NULL;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS session_token TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS session_label TEXT;
+CREATE INDEX IF NOT EXISTS idx_orders_session ON orders(session_token);
+
+-- UPI Multi-Bank and Passkey Routing
+ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS upi_id TEXT DEFAULT 'vallipriya1212-1@oksbi';
+ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS upi_name TEXT DEFAULT 'Royal Spice Bistro';
+ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS upi_passkey VARCHAR(50) DEFAULT '1234';
+ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS upi_accounts JSONB DEFAULT '[]'::jsonb;
+
+-- Menu item badges and veg classification
+ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS is_veg BOOLEAN DEFAULT TRUE;
+ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS original_price NUMERIC(10,2);
+ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS offer_badge TEXT;
+
+-- Order items customization notes
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS special_instructions TEXT;
+
+-- High-performance lookup indexes
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_orders_table_status ON orders(table_id, status);
+CREATE INDEX IF NOT EXISTS idx_order_items_menu_item ON order_items(menu_item_id);
+CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone);
+CREATE INDEX IF NOT EXISTS idx_menu_items_restaurant ON menu_items(restaurant_id);
+CREATE INDEX IF NOT EXISTS idx_menu_items_available ON menu_items(available);
+
+
+

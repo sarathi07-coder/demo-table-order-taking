@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Production builds
+dist/
+*/dist/
+dist-ssr/
+
+# Environment and secrets
+.env
+*.env
+*/.env
+.env.local
+.env.production
+.env.development
+
+# Logs & cache
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test outputs & scratch
+scratch/
+coverage/
+
+# Binaries & local docs
+bin/
+*.pdf
+VERCEL_ENV_KEYS.txt
+backend.env
+
+# Wrangler & Cloudflare
+.wrangler/
+*/.wrangler/
+
+# Capacitor Mobile Build Artifacts
+krish-owner-app/www/
+krish-owner-app/*.apk
+krish-owner-app/android/app/build/
+krish-owner-app/android/build/
+krish-owner-app/android/.gradle/
+krish-owner-app/android/capacitor-cordova-android-plugins/build/
+krish-owner-app/android/local.properties
+krish-owner-app/ios/App/Pods/
+
+
+WhatsApp Image*
+
+file_*.png
+krish_cafe_all_individual_menu_images/
+krish-owner-app/*.ipa
+qr-menu-backend/public/uploads/

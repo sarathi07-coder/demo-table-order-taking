@@ -1,0 +1,12 @@
+{
+  "name": "demo-table-order-taking",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DEMO Cafe & Restaurant \u2014 Table-Wise Order Taking & Split Billing POS",
+  "scripts": {
+    "build": "npm --prefix qr-menu-frontend install && npm --prefix qr-menu-frontend run build && rm -rf dist && cp -r qr-menu-frontend/dist ./dist && rm -f ./dist/_redirects ./dist/200.html",
+    "dev": "concurrently \"npm --prefix qr-menu-backend run dev\" \"npm --prefix qr-menu-frontend run dev\"",
+    "frontend": "npm --prefix qr-menu-frontend run dev",
+    "backend": "npm --prefix qr-menu-backend run dev"
+  }
+}

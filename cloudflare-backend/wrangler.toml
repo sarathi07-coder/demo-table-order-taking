@@ -1,0 +1,13 @@
+name = "demo-pos-api"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "demo-pos-db"
+database_id = "06f0da64-181f-440a-84c1-f25f620ee08b"
+
+[vars]
+JWT_SECRET = "demo_pos_secret_token_123"
+ADMIN_PASSWORD = "supersecret"
