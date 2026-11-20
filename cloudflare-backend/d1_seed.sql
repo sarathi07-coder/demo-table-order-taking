@@ -1,20 +1,20 @@
--- Initial Seed Data for Cloudflare D1 (Royal Spice Bistro)
+-- Initial Seed Data for Cloudflare D1 (DEMO Cafe & Restaurant)
 
 -- 1. Restaurant
 INSERT OR REPLACE INTO restaurants (
     id, name, owner_name, address, phone, tax_percentage, currency, upi_id, upi_name, upi_passkey, upi_accounts
 ) VALUES (
     'db4ed920-3d20-420a-9f54-99d3c0b48a08',
-    'Royal Spice Bistro',
+    'DEMO Cafe & Restaurant',
     'Tarun Karthick',
     '742 Evergreen Promenade, City Center',
     '+91-9876543210',
     5.0,
     '₹',
     'vallipriya1212-1@oksbi',
-    'Royal Spice Bistro',
+    'DEMO Cafe & Restaurant',
     '1234',
-    '[{"id":"acc_1","bank":"State Bank of India (SBI)","upi_id":"vallipriya1212-1@oksbi","upi_name":"Royal Spice Bistro (SBI)","daily_limit":"₹1,00,000 / day","notes":"Primary Account (GPay / PhonePe / Paytm)"},{"id":"acc_2","bank":"HDFC Bank","upi_id":"royalspice.bistro@okhdfcbank","upi_name":"Royal Spice Bistro (HDFC)","daily_limit":"₹2,00,000 / day","notes":"Secondary Backup"},{"id":"acc_3","bank":"ICICI Bank","upi_id":"royalspice@icici","upi_name":"Royal Spice Bistro (ICICI)","daily_limit":"₹2,00,000 / day","notes":"Weekend High-Volume Backup"}]'
+    '[{"id":"acc_1","bank":"State Bank of India (SBI)","upi_id":"vallipriya1212-1@oksbi","upi_name":"DEMO Cafe & Restaurant (SBI)","daily_limit":"₹1,00,000 / day","notes":"Primary Account (GPay / PhonePe / Paytm)"},{"id":"acc_2","bank":"HDFC Bank","upi_id":"royalspice.bistro@okhdfcbank","upi_name":"DEMO Cafe & Restaurant (HDFC)","daily_limit":"₹2,00,000 / day","notes":"Secondary Backup"},{"id":"acc_3","bank":"ICICI Bank","upi_id":"royalspice@icici","upi_name":"DEMO Cafe & Restaurant (ICICI)","daily_limit":"₹2,00,000 / day","notes":"Weekend High-Volume Backup"}]'
 );
 
 -- 2. Parcel / Takeaway + Dining Tables 1 to 15

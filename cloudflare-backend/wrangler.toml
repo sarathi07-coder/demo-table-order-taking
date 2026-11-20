@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "demo-pos-db"
-database_id = "06f0da64-181f-440a-84c1-f25f620ee08b"
+database_id = "80a8b1f2-46f3-4c17-b747-23ba27375b1d"
 
 [vars]
 JWT_SECRET = "demo_pos_secret_token_123"
